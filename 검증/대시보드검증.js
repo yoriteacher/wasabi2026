@@ -1,0 +1,188 @@
+// 교사 대시보드를 Node 모의 객체로 돌려 본다.
+// 특히: 비밀번호가 틀리면 학생 자료가 한 글자도 새지 않는가.
+
+const fs = require("fs");
+const path = require("path");
+const vm = require("vm");
+
+const 뿌리 = path.join(__dirname, "..");
+let 실패 = 0;
+const 확인 = (설명, 조건) => {
+  console.log((조건 ? "  ✓ " : "  ✗ ") + 설명);
+  if (!조건) 실패++;
+};
+
+const gas = fs.readFileSync(path.join(뿌리, "교사대시보드_Code.gs"), "utf8");
+
+const 제목줄 = ["기록시각", "학번", "이름", "연습문장", "인식된발음", "점수(%)", "통과여부", "통과기준(%)", "연습일시"];
+const 때 = (일, 시) => new Date(2026, 8, 일, 시, 0, 0);
+const 줄 = (일, 시, 학번, 이름, 문장, 점수) =>
+  [때(일, 시), 학번, 이름, 문장, "…", 점수, 점수 >= 80 ? "통과" : "미통과", 80, ""];
+
+// 아영: 꾸준히 오름 (통과)          민수: 한 번도 통과 못 함
+// 지호: 잘하다가 떨어짐              세리: 딱 한 번만 해 봄
+const 기본줄들 = [
+  제목줄,
+  줄(1, 9, "20101", "아영", "こんにちは", 55),
+  줄(2, 9, "20101", "아영", "ばしょは", 72),
+  줄(3, 9, "20101", "아영", "こんにちは", 88),
+  줄(1, 9, "20102", "민수", "こんにちは", 40),
+  줄(2, 9, "20102", "민수", "こんにちは", 45),
+  줄(3, 9, "20102", "민수", "ばしょは", 52),
+  줄(1, 9, "20103", "지호", "こんにちは", 90),
+  줄(2, 9, "20103", "지호", "ばしょは", 84),
+  줄(3, 9, "20103", "지호", "ばしょは", 61),
+  줄(1, 9, "20104", "세리", "こんにちは", 95),
+  [때(4, 9), "", "", "", "", "", "미통과", "", ""],   // 내가 남긴 빈 줄
+];
+
+function 상자(줄들, 비밀번호, 틀린횟수) {
+  const 저장 = { 교사_틀린횟수: 틀린횟수 == null ? null : String(틀린횟수) };
+  const s = {
+    SHEET_NAME: "발음기록",
+    SpreadsheetApp: {
+      getActiveSpreadsheet: () => ({
+        getSheetByName: (이름) =>
+          줄들 && 이름 === "발음기록" ? { getDataRange: () => ({ getValues: () => 줄들 }) } : null,
+      }),
+    },
+    PropertiesService: {
+      getScriptProperties: () => ({ getProperty: (ㅋ) => (ㅋ === "교사비밀번호" ? 비밀번호 : null) }),
+    },
+    CacheService: {
+      getScriptCache: () => ({
+        get: (ㅋ) => 저장[ㅋ] || null,
+        put: (ㅋ, ㄱ) => { 저장[ㅋ] = ㄱ; },
+        remove: (ㅋ) => { delete 저장[ㅋ]; },
+      }),
+    },
+    Utilities: {
+      sleep: () => {},
+      formatDate: (ㄷ) =>
+        ㄷ.getFullYear() + "-" + String(ㄷ.getMonth() + 1).padStart(2, "0") + "-" +
+        String(ㄷ.getDate()).padStart(2, "0") + " " + String(ㄷ.getHours()).padStart(2, "0") + ":00",
+    },
+    Session: { getScriptTimeZone: () => "Asia/Seoul" },
+    HtmlService: {
+      createHtmlOutputFromFile: (이름) => ({
+        _파일: 이름,
+        setTitle() { return this; },
+        addMetaTag() { return this; },
+        setXFrameOptionsMode() { return this; },
+      }),
+      XFrameOptionsMode: { DEFAULT: "default" },
+    },
+    jsonOut_: (ㅈ) => ({ _json: ㅈ }),
+    문장목록읽기: () => [{ jp: "こんにちは", kor: "안녕" }],
+    Object, Math, Number, String, Date, isFinite, isNaN, JSON, console, Error,
+    저장,
+  };
+  vm.createContext(s);
+  vm.runInContext(gas, s);
+  return s;
+}
+
+console.log("교사 대시보드 — 자물쇠");
+
+let s = 상자(기본줄들, "바른번호");
+let 답 = vm.runInContext('대시보드자료("틀린번호")', s);
+확인("비밀번호가 틀리면 ok:false", 답.ok === false);
+확인("틀렸을 때 자료를 아예 안 보낸다", 답.자료 === undefined);
+확인("틀린 횟수를 센다", s.저장["교사_틀린횟수"] === "1");
+확인("틀린 답에 학생 이름이 섞이지 않는다", JSON.stringify(답).indexOf("아영") === -1);
+
+답 = vm.runInContext('대시보드자료("")', s);
+확인("빈 비밀번호도 막는다", 답.ok === false);
+답 = vm.runInContext("대시보드자료(null)", s);
+확인("비밀번호 없이 불러도 막는다", 답.ok === false);
+답 = vm.runInContext('대시보드자료("바른번호 ")', s);
+확인("뒤에 공백이 붙으면 막는다", 답.ok === false);
+
+s = 상자(기본줄들, "바른번호", 8);
+let 터짐 = false;
+try { vm.runInContext('대시보드자료("바른번호")', s); } catch (e) { 터짐 = true; }
+확인("여러 번 틀리면 바른 번호여도 잠깐 막는다", 터짐);
+
+s = 상자(기본줄들, null);
+터짐 = false;
+try { vm.runInContext('대시보드자료("무엇이든")', s); } catch (e) { 터짐 = /비밀번호가 설정/.test(e.message); }
+확인("비밀번호를 안 정해 두면 열리지 않고 알려 준다", 터짐);
+
+s = 상자(기본줄들, "바른번호");
+답 = vm.runInContext('대시보드자료("바른번호")', s);
+확인("바른 비밀번호면 열린다", 답.ok === true && !!답.자료);
+확인("맞힌 뒤 틀린 횟수를 지운다", s.저장["교사_틀린횟수"] === undefined);
+
+console.log("교사 대시보드 — 학생별 성장");
+
+const 자료 = 답.자료;
+const 찾기 = (이름) => 자료.학생들.filter((ㅅ) => ㅅ.이름 === 이름)[0];
+
+확인("빈 줄은 학생으로 세지 않는다", 자료.학생들.length === 4);
+확인("통과기준을 시트에서 읽는다", 자료.통과기준 === 80);
+
+const 아영 = 찾기("아영");
+확인("아영 — 처음 55, 최근 88", 아영.처음 === 55 && 아영.최근 === 88);
+확인("아영 — 성장 +33", 아영.성장 === 33);
+확인("아영 — 최고 88, 시도 3", 아영.최고 === 88 && 아영.시도 === 3);
+확인("아영 — 자취가 시간 순서대로", JSON.stringify(아영.자취) === JSON.stringify([55, 72, 88]));
+확인("아영 — 연습한 날 3일", 아영.연습한날수 === 3);
+
+const 지호 = 찾기("지호");
+확인("지호 — 성장 -29 (떨어짐)", 지호.성장 === -29);
+
+console.log("교사 대시보드 — 먼저 볼 학생");
+
+const 짚 = 자료.짚을학생;
+const 짚이름 = 짚.map((ㅅ) => ㅅ.이름);
+확인("아영은 올라오지 않는다 (잘하고 있음)", 짚이름.indexOf("아영") === -1);
+확인("민수가 올라온다 (한 번도 통과 못 함)", 짚이름.indexOf("민수") !== -1);
+확인("지호가 올라온다 (떨어짐)", 짚이름.indexOf("지호") !== -1);
+확인("세리가 올라온다 (한 번만 해 봄)", 짚이름.indexOf("세리") !== -1);
+확인("가장 급한 민수가 맨 위", 짚이름[0] === "민수");
+
+const 민수 = 찾기("민수");
+확인("민수 — 급함이 가장 높다", 민수.급함 === 3);
+확인("민수 — 까닭에 '한 번도 통과' 가 적힌다",
+  민수.까닭들.some((ㄱ) => ㄱ.indexOf("한 번도 통과") !== -1));
+확인("민수 — 같이 볼 문장이 가장 낮은 것으로 나온다",
+  민수.약한문장 && 민수.약한문장.문장 === "こんにちは" && 민수.약한문장.평균 === 42.5);
+
+const 세리 = 찾기("세리");
+확인("세리 — 점수는 높아도 '한 번밖에' 로 잡힌다",
+  세리.까닭들.some((ㄱ) => ㄱ.indexOf("밖에") !== -1));
+확인("지호 — 까닭에 떨어진 것이 적힌다",
+  지호.까닭들.some((ㄱ) => /떨어졌|내려갔/.test(ㄱ)));
+
+console.log("교사 대시보드 — 문장별 / 전체");
+
+확인("어려운 문장이 맨 위", 자료.문장들[0].평균 <= 자료.문장들[자료.문장들.length - 1].평균);
+확인("문장 수 2개", 자료.문장들.length === 2);
+확인("전체 학생 수 4명", 자료.전체.학생수 === 4);
+확인("전체 시도 수 10번", 자료.전체.시도수 === 10);
+// 아영 +33, 민수 +12 → 는 사람 2명 / 지호 -29 → 준 사람 1명 / 세리 0 → 어느 쪽도 아님
+확인("는 학생 / 준 학생을 센다", 자료.전체.는사람 === 2 && 자료.전체.준사람 === 1);
+
+// 민수는 +12 로 오르는 중이지만 아직 기준을 못 넘었으므로 계속 올라와야 한다
+확인("오르는 중이어도 기준을 못 넘었으면 계속 부른다", 짚이름.indexOf("민수") !== -1);
+
+console.log("교사 대시보드 — doGet 길 찾기");
+
+s = 상자(기본줄들, "바른번호");
+확인("?화면=교사 는 교사 화면을 연다",
+  vm.runInContext("doGet({parameter:{화면:'교사'}})", s)._파일 === "교사");
+확인("?action=teacher 도 된다",
+  vm.runInContext("doGet({parameter:{action:'teacher'}})", s)._파일 === "교사");
+확인("?action=sentences 는 그대로 문장을 준다",
+  Array.isArray(vm.runInContext("doGet({parameter:{action:'sentences'}})", s)._json));
+확인("그냥 열면 살아있다는 표시만",
+  vm.runInContext("doGet({parameter:{}})", s)._json.result === "ok");
+확인("교사 화면 자체에는 학생 자료가 들어 있지 않다",
+  vm.runInContext("doGet({parameter:{화면:'교사'}})", s)._json === undefined);
+
+s = 상자(null, "바른번호");
+답 = vm.runInContext('대시보드자료("바른번호")', s);
+확인("기록 시트가 없어도 안 터진다", 답.ok === true && 답.자료.학생들.length === 0);
+
+console.log(실패 === 0 ? "\n전부 통과" : "\n실패 " + 실패 + "건");
+process.exit(실패 === 0 ? 0 : 1);
