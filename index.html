@@ -370,8 +370,14 @@
    비워두면 결과는 각 기기에만 저장됩니다. (설정 방법은 함께 드린 안내 참고) */
 const COLLECT_URL = "https://script.google.com/macros/s/AKfycbyJpQ5lCsA4tkvPk4WNL-9gONpH-21MDCpV-l0ueKVjw3kYtPJ6y0ys0V4qq9f2HghlnA/exec";
 
-/* ---------- 연습 문장 (2개) ---------- */
-const PHRASES = [
+/* ---------- 연습 문장 (기본값) ----------
+   아래 목록은 '기본값'입니다.
+   구글 시트에 '문제은행' 탭을 만들어 두면, 앱이 켜질 때 시트에서 문장을
+   받아와 이 목록을 대신합니다. 그때부터는 시트만 고치면 문장이 바뀌고,
+   이 파일은 건드릴 필요가 없습니다.
+   시트를 못 읽으면(아직 설정 전이거나, 느리거나, 인터넷이 끊겼거나)
+   아무 일도 없었다는 듯 이 기본값으로 그냥 돌아갑니다. */
+let PHRASES = [
     { jp:"\u3053\u3093\u306b\u3061\u306f\uff01\u308f\u305f\u3057\u306f \u3064\u3064\u3058\u3061\u3083\u3093\u3067\u3059\u3002", romaji:"Konnichiwa! Watashi wa Tsutsuji-chan desu.", kor:"\uc548\ub155\ud558\uc138\uc694! \uc800\ub294 \ucca0\ucb49\uc774\uc608\uc694." },
     { jp:"\u308f\u305f\u3057\u306e \u304a\u3059\u3059\u3081\u306f \u3064\u3064\u3058\u3082\u3061\u3067\u3059\u3002", romaji:"Watashi no osusume wa tsutsuji-mochi desu.", kor:"\uc81c\uac00 \ucd94\ucc9c\ud558\ub294 \uac74 \ucca0\ucb49\ub5a1\uc774\uc5d0\uc694." },
     { jp:"\u305d\u3057\u3066 \u3064\u3064\u3058\u306e \u30e9\u30a4\u30c8\u30a2\u30c3\u30d7\u3082 \u304a\u3059\u3059\u3081\u3067\u3059\u3002", romaji:"Soshite tsutsuji no raito-appu mo osusume desu.", kor:"\uadf8\ub9ac\uace0 \ucca0\ucb49 \ub77c\uc774\ud2b8\uc5c5(\uc57c\uac04 \uc870\uba85)\ub3c4 \ucd94\ucc9c\ud574\uc694." },
@@ -445,15 +451,21 @@ const targetKor=document.getElementById('targetKor');
 const customInput=document.getElementById('customInput');
 const customHint=document.getElementById('customHint');
 let customMode=false;
-PHRASES.forEach((p,i)=>{
-  const b=document.createElement('button'); b.textContent=p.jp;
-  b.onclick=()=>{ customMode=false; current=i; renderTarget(); resetResult(); };
-  tabs.appendChild(b);
-});
-const customTab=document.createElement('button');
-customTab.textContent='✎ 직접 입력';
-customTab.onclick=()=>{ customMode=true; renderTarget(); resetResult(); customInput.focus(); };
-tabs.appendChild(customTab);
+let customTab=null;
+/* 문장 목록이 바뀌면 이 함수를 다시 불러 단추를 새로 그린다 */
+function 문장단추그리기(){
+  tabs.innerHTML='';
+  PHRASES.forEach((p,i)=>{
+    const b=document.createElement('button'); b.textContent=p.jp;
+    b.onclick=()=>{ customMode=false; current=i; renderTarget(); resetResult(); };
+    tabs.appendChild(b);
+  });
+  customTab=document.createElement('button');
+  customTab.textContent='✎ 직접 입력';
+  customTab.onclick=()=>{ customMode=true; renderTarget(); resetResult(); customInput.focus(); };
+  tabs.appendChild(customTab);
+}
+문장단추그리기();
 
 function renderTarget(){
   [...tabs.children].forEach((b,i)=>b.classList.toggle('active', !customMode && i===current));
@@ -470,6 +482,36 @@ function renderTarget(){
 }
 function getTarget(){ return customMode ? customInput.value.trim() : PHRASES[current].jp; }
 renderTarget();
+
+/* ---------- 구글 시트에서 연습 문장 받아오기 ----------
+   시트의 '문제은행' 탭이 원본이 되고, 이 파일은 엔진만 맡는다.
+   - 6초 안에 답이 없으면 포기하고 기본값으로 간다 (수업이 멈추면 안 되므로)
+   - 받은 자료의 모양이 이상하면 쓰지 않는다
+   - 어떤 경우에도 오류 화면을 학생에게 보이지 않는다 */
+function 시트에서문장받기(){
+  if(!COLLECT_URL) return;
+  const 중단 = (typeof AbortController!=='undefined') ? new AbortController() : null;
+  const 시계 = 중단 ? setTimeout(()=>중단.abort(), 6000) : null;
+
+  fetch(COLLECT_URL + '?action=sentences', { method:'GET', signal: 중단 ? 중단.signal : undefined })
+    .then(res => { if(시계) clearTimeout(시계); return res.ok ? res.json() : null; })
+    .then(자료 => {
+      if(!Array.isArray(자료) || 자료.length === 0) return;
+      const 쓸만한가 = 자료.every(x => x && typeof x.jp === 'string' && x.jp.trim());
+      if(!쓸만한가) return;
+
+      PHRASES = 자료.map(x => ({
+        jp:     String(x.jp).trim(),
+        romaji: String(x.romaji || '').trim(),
+        kor:    String(x.kor || '').trim()
+      }));
+      current = 0; customMode = false;
+      문장단추그리기();
+      renderTarget();
+    })
+    .catch(()=>{ if(시계) clearTimeout(시계); /* 조용히 기본값 유지 */ });
+}
+시트에서문장받기();
 
 /* ---------- 발음 들어보기 ---------- */
 // 기기에 깔린 일본어 음성 중 품질이 좋은 것을 우선 선택
