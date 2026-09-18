@@ -94,6 +94,13 @@
 
   .target{text-align:center;padding:16px 12px;border:1px dashed var(--line);border-radius:13px;background:#fbfcf3}
   .target .jp{font-family:"Shippori Mincho",serif;font-weight:700;font-size:27px;line-height:1.45;word-break:keep-all}
+  /* 한자 위에 얹는 히라가나. 루비를 못 그리는 브라우저에서는 괄호로 나옵니다 */
+  .target .jp ruby{ruby-position:over;-webkit-ruby-position:over}
+  .target .jp rt{
+    font-family:"Zen Maru Gothic","Noto Sans KR",sans-serif;
+    font-size:.42em;font-weight:500;color:var(--vermilion-deep);
+    letter-spacing:.02em;line-height:1.1;user-select:none;
+  }
   .target .kor{color:var(--ink-soft);font-size:13px;margin-top:4px}
   .target-input{width:100%;font-family:"Shippori Mincho",serif;font-size:23px;text-align:center;border:none;border-bottom:2px solid var(--line);background:transparent;color:var(--ink);outline:none;padding:6px 2px}
   .target-input:focus{border-color:var(--vermilion)}
@@ -183,7 +190,7 @@
   <header>
     <div class="kanji-mark">わ さ び</div>
     <h1>와사비</h1>
-    <p>일본어 발음 연습 · 소리 내어 읽으면 인식 성공률을 판정합니다 (80% 이상 통과)</p>
+    <p>일본어 발음 연습 · 소리 내어 읽으면 인식 성공률을 판정합니다 (<span id="머리기준">70</span>% 이상 통과)</p>
   </header>
 
   <!-- ====== 시작 화면 ====== -->
@@ -377,10 +384,10 @@ const COLLECT_URL = "https://script.google.com/macros/s/AKfycbyJpQ5lCsA4tkvPk4WN
    아무 일도 없었다는 듯 이 기본값으로 그냥 돌아갑니다. */
 let PHRASES = [
     { jp:"\u3042\u306e\u3046\u3001\u3059\u307f\u307e\u305b\u3093\u3002", kor:"\uc800, \uc2e4\ub840\ud569\ub2c8\ub2e4." },
-    { jp:"\u3068\u3057\u3087\u304b\u3093\u306f \u3069\u3053\u3067\u3059\u304b\u3002", kor:"\ub3c4\uc11c\uad00\uc740 \uc5b4\ub514\uc785\ub2c8\uae4c?" },
-    { jp:"\u3068\u3057\u3087\u304b\u3093\u3067\u3059\u304b\u3002", kor:"\ub3c4\uc11c\uad00\uc774\uc694?" },
-    { jp:"\u3068\u3057\u3087\u304b\u3093\u306f \u307b\u3093\u3084\u306e \u3072\u3060\u308a\u306b \u3042\u308a\u307e\u3059\u3002", kor:"\ub3c4\uc11c\uad00\uc740 \uc11c\uc810 \uc67c\ucabd\uc5d0 \uc788\uc2b5\ub2c8\ub2e4." },
-    { jp:"\u3042\u308a\u304c\u3068\u3046\u3054\u3056\u3044\u307e\u3057\u305f\u3002", kor:"\uac10\uc0ac\ud588\uc2b5\ub2c8\ub2e4." }
+    { jp:"\u307b\u3093\u3084\u306f \u3069\u3053\u3067\u3059\u304b\u3002", kor:"\uc11c\uc810\uc740 \uc5b4\ub514\uc785\ub2c8\uae4c?", 표기:"{\u672c\u5c4b|\u307b\u3093\u3084}\u306f \u3069\u3053\u3067\u3059\u304b\u3002" },
+    { jp:"\u307b\u3093\u3084\u3067\u3059\u304b\u3002", kor:"\uc11c\uc810 \ub9d0\uc785\ub2c8\uae4c?", 표기:"{\u672c\u5c4b|\u307b\u3093\u3084}\u3067\u3059\u304b\u3002" },
+    { jp:"\u307b\u3093\u3084\u306f \u30b9\u30fc\u30d1\u30fc\u306e \u3072\u3060\u308a\u306b \u3042\u308a\u307e\u3059\u3002", kor:"\uc11c\uc810\uc740 \uc288\ud37c\uc758 \uc67c\ucabd\uc5d0 \uc788\uc5b4\uc694.", 표기:"{\u672c\u5c4b|\u307b\u3093\u3084}\u306f \u30b9\u30fc\u30d1\u30fc\u306e {\u5de6|\u3072\u3060\u308a}\u306b \u3042\u308a\u307e\u3059\u3002" },
+    { jp:"\u3042\u308a\u304c\u3068\u3046\u3054\u3056\u3044\u307e\u3057\u305f\u3002", kor:"\uac10\uc0ac\ud569\ub2c8\ub2e4." }
   ];
 let current=0, threshold=70, studentName="", studentNo="";
 
@@ -441,6 +448,29 @@ document.getElementById('backBtn').onclick=()=>{ show(appView); };
 document.getElementById('growthBtn').onclick=()=>{ renderGrowth(); show(growthView); };
 document.getElementById('growthBack').onclick=()=>{ show(appView); };
 
+/* ---------- 한자 위에 히라가나 (후리가나) ----------
+   표기 칸에 이렇게 적습니다:  {図書館|としょかん}は どこですか。
+   { 한자 | 읽는 법 } 을 만나면 한자 위에 작은 히라가나를 얹습니다.
+   표기 칸이 비어 있으면 지금처럼 히라가나 문장을 그대로 보여 줍니다.
+   시트에서 온 글도 그릴 수 있어야 하므로, 통째로 HTML 로 넣지 않고
+   글자만 따로 담습니다. (남의 글이 화면을 건드리지 못하게) */
+function 후리가나그리기(칸, 표기){
+  칸.textContent = '';
+  const 규칙 = /\{([^{}|]+)\|([^{}|]+)\}/g;
+  let 앞 = 0, 만난것;
+  while((만난것 = 규칙.exec(표기)) !== null){
+    if(만난것.index > 앞) 칸.appendChild(document.createTextNode(표기.slice(앞, 만난것.index)));
+    const 루비 = document.createElement('ruby');
+    루비.appendChild(document.createTextNode(만난것[1]));      // 한자
+    const 작은글 = document.createElement('rt');
+    작은글.textContent = 만난것[2];                            // 위에 얹을 히라가나
+    루비.appendChild(작은글);
+    칸.appendChild(루비);
+    앞 = 규칙.lastIndex;
+  }
+  if(앞 < 표기.length) 칸.appendChild(document.createTextNode(표기.slice(앞)));
+}
+
 /* ---------- 문장 UI ---------- */
 const tabs=document.getElementById('tabs');
 const targetJp=document.getElementById('targetJp');
@@ -453,7 +483,9 @@ let customTab=null;
 function 문장단추그리기(){
   tabs.innerHTML='';
   PHRASES.forEach((p,i)=>{
-    const b=document.createElement('button'); b.textContent=p.jp;
+    // 단추에는 한자만 보이면 됩니다. 후리가나는 큰 글에서 보여 줍니다.
+    const b=document.createElement('button');
+    b.textContent = p.표기 ? p.표기.replace(/\{([^{}|]+)\|[^{}|]+\}/g, '$1') : p.jp;
     b.onclick=()=>{ customMode=false; current=i; renderTarget(); resetResult(); };
     tabs.appendChild(b);
   });
@@ -474,7 +506,9 @@ function renderTarget(){
     targetJp.style.display=''; targetKor.style.display='';
     customInput.style.display='none'; customHint.style.display='none';
     const p=PHRASES[current];
-    targetJp.textContent=p.jp; targetKor.textContent=p.kor;
+    if(p.표기) 후리가나그리기(targetJp, p.표기);
+    else targetJp.textContent=p.jp;
+    targetKor.textContent=p.kor;
   }
 }
 function getTarget(){ return customMode ? customInput.value.trim() : PHRASES[current].jp; }
@@ -500,7 +534,8 @@ function 시트에서문장받기(){
       PHRASES = 자료.map(x => ({
         jp:     String(x.jp).trim(),
         kor:    String(x.kor || '').trim(),
-        소리:   String(x.소리 || '').trim()
+        소리:   String(x.소리 || '').trim(),
+        표기:   String(x.표기 || '').trim()
       }));
       current = 0; customMode = false;
       문장단추그리기();
@@ -913,7 +948,9 @@ document.getElementById('exportBtn').onclick=()=>{
 /* ---------- 기준 슬라이더 ---------- */
 const thSlider=document.getElementById('threshold');
 const thVal=document.getElementById('thVal');
-thSlider.oninput=()=>{ threshold=+thSlider.value; thVal.textContent=threshold; };
+const 머리기준=document.getElementById('머리기준');
+thSlider.oninput=()=>{ threshold=+thSlider.value; thVal.textContent=threshold; 머리기준.textContent=threshold; };
+머리기준.textContent=threshold;   // 첫 화면도 실제 기준을 보여 줍니다
 </script>
 </body>
 </html>
