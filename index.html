@@ -661,6 +661,9 @@ function normalize(s){
   s=s.replace(/[\u3040-\u309f]/g,c=>dak[c]||c);
   return s;
 }
+/* 이 점수 이상이면 만점을 줍니다. 낮출수록 후해집니다. */
+const 만점기준 = 60;
+
 function levenshtein(a,b){
   const m=a.length,n=b.length; if(!m)return n; if(!n)return m;
   const d=Array.from({length:m+1},(_,i)=>[i,...Array(n).fill(0)]);
@@ -696,7 +699,11 @@ function levenshtein(a,b){
   let base = editScore*0.45 + coverScore*0.55;
   // 4) 가산 곡선: 부분 점수를 끌어올림. 지수가 작을수록 후해집니다
   let adjusted = Math.pow(base, 0.6);
-  return Math.max(0, Math.min(100, Math.round(adjusted*100)));
+  let 점수 = Math.max(0, Math.min(100, Math.round(adjusted*100)));
+  // 5) 학생용으로 한 번 더 후하게.
+  //    예전에 60점쯤 나오던 발음이 100점이 되도록 끌어올립니다.
+  //    세기(2.6)를 키우면 깐깐해지고, 줄이면 더 후해집니다.
+  return Math.min(100, Math.round(100 * Math.pow(점수/만점기준, 2.6)));
 }
 function buildDiff(t,h){ const tn=normalize(t),hn=normalize(h),set=new Set(hn.split('')); return tn.split('').map(c=>set.has(c)?`<span class="ok">${c}</span>`:`<span class="bad">${c}</span>`).join(''); }
 
