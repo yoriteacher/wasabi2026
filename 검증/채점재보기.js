@@ -1,39 +1,66 @@
 /* 지금 채점이 실제로 몇 점을 주는지 재 봅니다.  node 검증/채점재보기.js */
-const fs=require('fs'), path=require('path');
-const 글=fs.readFileSync(path.join(__dirname,'..','index.html'),'utf8');
-const 시작=글.indexOf('/* ---------- 유사도 ----------');
-const 끝=글.indexOf('function buildDiff');
-const 조각=글.slice(시작,끝);
-const similarity=new Function(조각+'\nreturn similarity;')();
+const fs = require('fs'), path = require('path');
+const 글 = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+const 조각 = 글.slice(글.indexOf('/* ---------- 유사도 ----------'), 글.indexOf('function buildDiff'));
+const similarity = new Function(조각 + '\nreturn similarity;')();
 
-const 목표='こんにちは！ぼくたちは バンドぶです。';
-const 경우=[
-  ['그대로 정확히', 'こんにちは！ぼくたちは バンドぶです。'],
-  ['조사 하나 빠짐', 'こんにちは ぼくたち バンドぶです'],
-  ['끝을 흐림', 'こんにちは ぼくたちは バンドぶ'],
-  ['한 글자 틀림', 'こんにちは ぼくたちは バンドふです'],
-  ['앞부분만 들림', 'こんにちは ぼくたちは'],
-  ['띄어 읽어 인식이 끊김', 'こんにちは ぼく たちは バンド ぶです'],
-  ['비슷하게 잘못 받아적힘', 'こんにちわ ぼくたちわ バンドブです'],
-  ['절반쯤', 'こんにちは バンドです'],
-  ['전혀 다른 말', 'ありがとうございます'],
+/* 실제 연습 문장 + 한국 학생이 흔히 내는 어색함 */
+const 모음 = [
+  ['\u3042\u306e\u3046\u3001\u3059\u307f\u307e\u305b\u3093\u3002', [
+    ['\uac70\uc758 \uc815\ud655', '\u3042\u306e\u3046 \u3059\u307f\u307e\u305b\u3093', true],
+    ['\uc7a5\uc74c\uc744 \uc9e7\uac8c', '\u3042\u306e \u3059\u307f\u307e\u305b\u3093', true],
+    ['\u3059\u2192\u3057 \ud63c\ub3d9', '\u3042\u306e\u3046 \u3057\u307f\u307e\u305b\u3093', true],
+    ['\ub4a4\ub9cc \ub4e4\ub9bc', '\u3059\u307f\u307e\u305b\u3093', true],
+    ['\uc804\ud600 \ub2e4\ub978 \ub9d0', '\u3053\u3093\u306b\u3061\u306f', false]]],
+  ['\u3068\u3057\u3087\u304b\u3093\u306f \u3069\u3053\u3067\u3059\u304b\u3002', [
+    ['\uac70\uc758 \uc815\ud655', '\u3068\u3057\u3087\u304b\u3093\u306f \u3069\u3053\u3067\u3059\u304b', true],
+    ['\uc870\uc0ac\ub97c \u308f\ub85c \ubc1b\uc544\uc801\ud798', '\u3068\u3057\u3087\u304b\u3093\u308f \u3069\u3053\u3067\u3059\u304b', true],
+    ['\uc694\uc74c\uc774 \ud480\ub9bc', '\u3068\u3057\u3088\u304b\u3093\u306f \u3069\u3053\u3067\u3059\u304b', true],
+    ['\ub05d\uc774 \uc798\ub9bc', '\u3068\u3057\u3087\u304b\u3093\u306f \u3069\u3053', true],
+    ['\uc55e\ub9cc \ub4e4\ub9bc', '\u3068\u3057\u3087\u304b\u3093', false]]],
+  ['\u3068\u3057\u3087\u304b\u3093\u3067\u3059\u304b\u3002', [
+    ['\uac70\uc758 \uc815\ud655', '\u3068\u3057\u3087\u304b\u3093\u3067\u3059\u304b', true],
+    ['\u3061/\u3057 \ud63c\ub3d9', '\u3068\u3061\u3087\u304b\u3093\u3067\u3059\u304b', true],
+    ['\u3093 \ube60\uc9d0', '\u3068\u3057\u3087\u304b\u3067\u3059\u304b', true],
+    ['\uc804\ud600 \ub2e4\ub978 \ub9d0', '\u3042\u308a\u304c\u3068\u3046', false]]],
+  ['\u3068\u3057\u3087\u304b\u3093\u306f \u30d1\u30f3\u3084\u306e \u307b\u3093\u3084\u306e \u3072\u3060\u308a\u306b \u3042\u308a\u307e\u3059\u3002', [
+    ['\uac70\uc758 \uc815\ud655', '\u3068\u3057\u3087\u304b\u3093\u306f \u30d1\u30f3\u3084\u306e \u307b\u3093\u3084\u306e \u3072\u3060\u308a\u306b \u3042\u308a\u307e\u3059', true],
+    ['\ud55c \ub9c8\ub514 \ube60\uc9d0', '\u3068\u3057\u3087\u304b\u3093\u306f \u30d1\u30f3\u3084\u306e \u3072\u3060\u308a\u306b \u3042\u308a\u307e\u3059', true],
+    ['\ub05d\uc744 \ud750\ub9bc', '\u3068\u3057\u3087\u304b\u3093\u306f \u30d1\u30f3\u3084\u306e \u307b\u3093\u3084\u306e \u3072\u3060\u308a', true],
+    ['\uc808\ubc18\uc4b8', '\u3068\u3057\u3087\u304b\u3093\u306f \u30d1\u30f3\u3084\u306e \u307b\u3093\u3084', true],
+    ['\uc55e \ud55c \ub9c8\ub514\ub9cc', '\u3068\u3057\u3087\u304b\u3093\u306f', false]]],
+  ['\u3042\u308a\u304c\u3068\u3046\u3054\u3056\u3044\u307e\u3057\u305f\u3002', [
+    ['\uac70\uc758 \uc815\ud655', '\u3042\u308a\u304c\u3068\u3046\u3054\u3056\u3044\u307e\u3057\u305f', true],
+    ['\ud604\uc7ac\ud615\uc73c\ub85c \ub9d0\ud568', '\u3042\u308a\u304c\u3068\u3046\u3054\u3056\u3044\u307e\u3059', true],
+    ['\uc9e7\uac8c \ub05d\ub0c4', '\u3042\u308a\u304c\u3068\u3046', false],
+    ['\uc804\ud600 \ub2e4\ub978 \ub9d0', '\u3059\u307f\u307e\u305b\u3093', false]]],
 ];
-console.log('목표: ' + 목표 + '\n');
-console.log('  점수  통과(80)  통과(70)  상황');
-for(const [이름,들린] of 경우){
-  const s=similarity(목표,들린);
-  console.log('  ' + String(s).padStart(3) + '점    ' + (s>=80?'  ○ ':'  ✗ ') + '     ' + (s>=70?'  ○ ':'  ✗ ') + '    ' + 이름);
-}
 
-/* 느슨하게 만들되 아무 말이나 통과하면 안 됩니다 */
-let 통과=0,실패=0;
-function 확인(n,ok){ ok?(통과++,console.log('  ok   '+n)):(실패++,console.log('  FAIL '+n)); }
-console.log('\n선 지키기');
-확인('정확히 읽으면 만점', similarity(목표,목표)===100);
-확인('전혀 다른 말은 70을 못 넘는다', similarity(목표,'ありがとうございます')<70);
-확인('첫 마디만 말하면 70을 못 넘는다', similarity(목표,'こんにちは')<70);
-확인('침묵은 0점', similarity(목표,'')===0);
-확인('부분만 인식돼도 70은 넘는다', similarity(목표,'こんにちは ぼくたちは')>=70);
-확인('탁점 실수는 봐준다', similarity(목표,'こんにちは ぼくたちは バンドふです')>=70);
-console.log('\n통과 '+통과+' / 실패 '+실패);
-process.exit(실패?1:0);
+let 어긋남 = 0;
+for (const [목표, 경우들] of 모음) {
+  console.log('\n' + 목표);
+  for (const [이름, 들린, 통과해야] of 경우들) {
+    const s = similarity(목표, 들린);
+    const 통과 = s >= 70;
+    const 맞나 = 통과 === 통과해야;
+    if (!맞나) 어긋남++;
+    console.log('   ' + String(s).padStart(3) + '점  ' + (통과 ? '통과' : '재연습') +
+      '  ' + (맞나 ? '    ' : ' ←! ') + 이름);
+  }
+}
+console.log('\n뜻대로 안 나온 경우: ' + 어긋남 + '개  (기준 70점)');
+
+/* 음성인식이 한자로 받아적어도 제 점수가 나와야 합니다 (이게 점수가 확 떨어지던 진짜 원인) */
+let 통과 = 0, 실패 = 0;
+function 확인(n, ok) { ok ? (통과++, console.log('  ok   ' + n)) : (실패++, console.log('  FAIL ' + n)); }
+console.log('\n한자로 받아적혀도 괜찮은가');
+확인('図書館 = としょかん', similarity('\u3068\u3057\u3087\u304b\u3093\u3067\u3059\u304b\u3002', '\u56f3\u66f8\u9928\u3067\u3059\u304b') >= 95);
+확인('パン屋・本屋・左 모두', similarity('\u3068\u3057\u3087\u304b\u3093\u306f \u30d1\u30f3\u3084\u306e \u307b\u3093\u3084\u306e \u3072\u3060\u308a\u306b \u3042\u308a\u307e\u3059\u3002', '\u56f3\u66f8\u9928\u306f\u30d1\u30f3\u5c4b\u306e\u672c\u5c4b\u306e\u5de6\u306b\u3042\u308a\u307e\u3059') >= 95);
+
+console.log('\n선 지키기 — 아무 말이나 통과하면 연습이 안 됩니다');
+확인('정확히 읽으면 만점', similarity('\u3068\u3057\u3087\u304b\u3093\u3067\u3059\u304b\u3002', '\u3068\u3057\u3087\u304b\u3093\u3067\u3059\u304b\u3002') === 100);
+확인('전혀 다른 말은 떨어진다', similarity('\u3068\u3057\u3087\u304b\u3093\u3067\u3059\u304b\u3002', '\u3042\u308a\u304c\u3068\u3046') < 70);
+확인('침묵은 0점', similarity('\u3068\u3057\u3087\u304b\u3093\u3067\u3059\u304b\u3002', '') === 0);
+
+console.log('\n통과 ' + 통과 + ' / 실패 ' + 실패);
+process.exit((실패 || 어긋남) ? 1 : 0);
