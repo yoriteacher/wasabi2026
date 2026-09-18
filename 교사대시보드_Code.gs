@@ -89,6 +89,22 @@ function 같은글자_(가, 나) {
 }
 
 
+/**
+ * 학번에서 학년·반·번호를 읽습니다.
+ * 우리 학교 학번은 20709 처럼 다섯 자리 = 학년(1) + 반(2) + 번호(2) 입니다.
+ * 형식이 다르면 반을 '?' 로 두고, 나머지 기능은 그대로 돌아갑니다.
+ */
+function 학번풀기_(학번) {
+  var ㅅ = String(학번 || '').trim();
+  if (!/^\d{5}$/.test(ㅅ)) return { 학년: '', 반: '?', 번호: '' };
+  return {
+    학년: ㅅ.charAt(0),
+    반: String(Number(ㅅ.substring(1, 3))),     // '07' → '7'
+    번호: String(Number(ㅅ.substring(3, 5)))
+  };
+}
+
+
 /** 제목 줄에서 원하는 칸을 찾습니다. 칸 순서가 바뀌어도 버팁니다. */
 function 대시보드칸찾기_(제목, 열쇠말들, 기본) {
   for (var i = 0; i < 제목.length; i++) {
@@ -158,6 +174,9 @@ function 학생별성장() {
   }
 
   var 학생들 = [];
+  var 분포칸 = [];
+  for (var ㅋ = 0; ㅋ < 10; ㅋ++) 분포칸.push({ 아래: ㅋ * 10, 위: ㅋ * 10 + 10, 수: 0 });
+
   Object.keys(사람).forEach(function (열쇠) {
     var ㅅ = 사람[열쇠];
     ㅅ.기록.sort(function (가, 나) { return 가.때 - 나.때; });   // 시간 순
@@ -166,9 +185,18 @@ function 학생별성장() {
     var 처음 = 점수들[0];
     var 최근 = 점수들[점수들.length - 1];
 
+    // 분포는 최근 12개가 아니라 모든 시도를 셉니다
+    점수들.forEach(function (ㅈ) {
+      분포칸[Math.min(9, Math.max(0, Math.floor(ㅈ / 10)))].수 += 1;
+    });
+
+    var 갈래 = 학번풀기_(ㅅ.학번);
     var 한명 = {
       학번: ㅅ.학번,
       이름: ㅅ.이름,
+      학년: 갈래.학년,
+      반: 갈래.반,
+      번호: 갈래.번호,
       시도: 점수들.length,
       처음: 처음,
       최근: 최근,
@@ -212,9 +240,40 @@ function 학생별성장() {
     학생들: 학생들,
     짚을학생: 짚을학생,
     문장들: 문장들,
+    반들: 반별요약_(학생들, 통과기준),
+    분포: 분포칸,
     통과기준: 통과기준,
     전체: 전체요약_(학생들)
   };
+}
+
+
+/** 반별로 묶어 견줍니다. */
+function 반별요약_(학생들, 통과기준) {
+  var 묶음 = {};
+  학생들.forEach(function (ㅅ) {
+    if (!묶음[ㅅ.반]) 묶음[ㅅ.반] = [];
+    묶음[ㅅ.반].push(ㅅ);
+  });
+
+  return Object.keys(묶음).sort(function (가, 나) {
+    if (가 === '?') return 1;
+    if (나 === '?') return -1;
+    return Number(가) - Number(나);
+  }).map(function (반) {
+    var 들 = 묶음[반];
+    var 평균들 = 들.map(function (ㅅ) { return ㅅ.평균; });
+    var 성장들 = 들.map(function (ㅅ) { return ㅅ.성장; });
+    return {
+      반: 반,
+      학생수: 들.length,
+      시도수: 들.reduce(function (ㄱ, ㅅ) { return ㄱ + ㅅ.시도; }, 0),
+      평균: 반올림_(평균들.reduce(function (ㄱ, ㄴ) { return ㄱ + ㄴ; }, 0) / 들.length),
+      평균성장: 반올림_(성장들.reduce(function (ㄱ, ㄴ) { return ㄱ + ㄴ; }, 0) / 들.length),
+      통과한사람: 들.filter(function (ㅅ) { return ㅅ.최고 >= 통과기준; }).length,
+      짚을사람: 들.filter(function (ㅅ) { return ㅅ.급함 > 0; }).length
+    };
+  });
 }
 
 
