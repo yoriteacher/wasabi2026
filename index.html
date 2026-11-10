@@ -413,16 +413,58 @@ else if(isAndroid){ deviceNote.className='warn info show'; deviceNote.innerHTML=
 /* ---------- 안전 저장소 ---------- */
 let memFallback=[];
 function loadRecords(){ try{ return JSON.parse(localStorage.getItem('jp_records')||'[]'); }catch(e){ return memFallback; } }
-function saveRecords(arr){ try{ localStorage.setItem('jp_records',JSON.stringify(arr)); }catch(e){ memFallback=arr; } }
+/* 기록은 연구 자료다. 자리가 모자랄 때 소리 보관함보다 기록을 먼저 지킨다. */
+function saveRecords(arr){
+  const 글=JSON.stringify(arr);
+  memFallback=arr;
+  try{ localStorage.setItem('jp_records',글); return true; }
+  catch(e){
+    /* 아이폰은 저장 공간이 빡빡하다. 가장 크게 차지하는 소리 보관함을 비우고 다시 넣는다. */
+    try{ localStorage.removeItem('wasabi_소리_v1'); }catch(e2){}
+    try{ 받아둔소리.clear(); }catch(e2){}
+    try{ localStorage.setItem('jp_records',글); return true; }catch(e3){}
+    return false;
+  }
+}
 function storageOk(){ try{ localStorage.setItem('jp_test','1'); localStorage.removeItem('jp_test'); return true; }catch(e){ return false; } }
-// 결과를 선생님 구글 시트로 전송 (URL이 설정된 경우)
+
+/* ---------- 선생님 시트로 보내기 ----------
+   예전에는 fetch 한 번 쏘고 잊었다. 수업이 끝나 학생이 사파리를 바로 닫으면
+   그 요청은 중간에 끊겨 기록이 영영 사라졌다. 이제는
+   ① 창이 닫혀도 살아남는 sendBeacon으로 보내고
+   ② 못 보낸 것은 이 기기에 적어 두었다가 다시 연결되면 자동으로 보낸다. */
+const 못보낸열쇠='wasabi_못보낸기록_v1';
+function 못보낸읽기(){ try{ return JSON.parse(localStorage.getItem(못보낸열쇠)||'[]'); }catch(e){ return []; } }
+function 못보낸쓰기(ㄴ){ try{ localStorage.setItem(못보낸열쇠,JSON.stringify(ㄴ.slice(-300))); }catch(e){} }
+function 한건보내기(rec){
+  if(!COLLECT_URL) return false;
+  if(navigator.onLine===false) return false;
+  const 글=JSON.stringify(rec);
+  try{
+    if(navigator.sendBeacon){
+      const 덩이=new Blob([글],{type:'text/plain;charset=utf-8'});
+      if(navigator.sendBeacon(COLLECT_URL,덩이)) return true;
+    }
+  }catch(e){}
+  try{
+    fetch(COLLECT_URL,{ method:'POST', mode:'no-cors', keepalive:true, headers:{'Content-Type':'text/plain;charset=utf-8'}, body:글 });
+    return true;
+  }catch(e){ return false; }
+}
 function sendToTeacher(rec){
   if(!COLLECT_URL) return;
-  try{
-    fetch(COLLECT_URL,{ method:'POST', mode:'no-cors', headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify(rec) });
-  }catch(e){}
+  if(!한건보내기(rec)){ const ㄴ=못보낸읽기(); ㄴ.push(rec); 못보낸쓰기(ㄴ); }
 }
-
+function 밀린것보내기(){
+  if(!COLLECT_URL || navigator.onLine===false) return;
+  const ㄴ=못보낸읽기(); if(!ㄴ.length) return;
+  const 남은=[];
+  ㄴ.forEach(r=>{ if(!한건보내기(r)) 남은.push(r); });
+  못보낸쓰기(남은);
+}
+window.addEventListener('online', 밀린것보내기);
+document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible') 밀린것보내기(); });
+setTimeout(밀린것보내기, 3000);
 /* ---------- 시작 ---------- */
 const numberInput=document.getElementById('numberInput');
 const nameInput=document.getElementById('nameInput');
@@ -435,6 +477,16 @@ startBtn.onclick=()=>{
   if(!num){ startWarn.textContent='학번을 입력해 주세요.'; numberInput.focus(); return; }
   if(!n){ startWarn.textContent='이름을 입력해 주세요.'; nameInput.focus(); return; }
   startWarn.textContent='';
+  /* 아이폰은 손가락으로 누른 순간에만 소리가 열린다.
+     여기서 소리통과 기계 음성을 미리 한 번 열어 두면, 뒤에 '듣기'가 바로 난다. */
+  try{ 소리틀열기(); }catch(e){}
+  try{
+    if(window.speechSynthesis){
+      const 맛보기=new SpeechSynthesisUtterance(' ');
+      맛보기.volume=0; 맛보기.lang='ja-JP';
+      window.speechSynthesis.speak(맛보기);
+    }
+  }catch(e){}
   studentNo=num; studentName=n;
   document.getElementById('whoName').textContent=num+' '+n;
   show(appView);
@@ -630,7 +682,8 @@ const 받아둔소리 = new Map();
    다음 시간에는 처음부터 기다리지 않습니다.
    자리가 모자라면 오래된 것부터 버립니다. */
 const 보관함열쇠 = 'wasabi_소리_v1';
-const 보관함한도 = 3 * 1024 * 1024;   // 3MB 언저리까지만
+/* 아이폰은 저장 공간이 좁고 꽉 차면 학생 기록까지 못 쓴다. 아이폰은 더 적게 쓴다. */
+const 보관함한도 = (isIOS ? 1 : 3) * 1024 * 1024;
 
 function 보관함읽기(){
   try{ return JSON.parse(localStorage.getItem(보관함열쇠) || '{}') || {}; }
@@ -690,15 +743,44 @@ async function 서버에소리부탁(글, 기다림){
   }
 }
 
+/* ── 소리통 하나로 돌려 쓰기 ───────────────────────────────
+   아이폰은 손가락으로 누른 그 순간에만 소리를 틀 수 있다.
+   누를 때마다 new Audio()를 만들면, 서버에서 소리를 받아오느라 한 박자 쉬는 사이
+   '누른 순간'이 지나가 버려 아무 소리도 안 난다.
+   그래서 소리통을 하나만 만들어 두고, 시작 단추를 누를 때 미리 열어 둔다. */
+let 소리틀 = null, 틀풀림 = false;
+const 무음 = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAAAA=';
+function 소리틀마련(){
+  if(!소리틀){ try{ 소리틀 = new Audio(); 소리틀.preload = 'auto'; }catch(e){ 소리틀 = null; } }
+  return 소리틀;
+}
+function 소리틀열기(){
+  const ㅌ = 소리틀마련(); if(!ㅌ || 틀풀림) return;
+  try{
+    ㅌ.src = 무음;
+    const ㅍ = ㅌ.play();
+    if(ㅍ && ㅍ.then) ㅍ.then(()=>{ 틀풀림 = true; }).catch(()=>{});
+    else 틀풀림 = true;
+  }catch(e){}
+}
+
 /* 소리를 틉니다. 못 틀면 거짓을 돌려줍니다. */
 function 틀기(주소, 글){
   return new Promise(맺음 => {
+    const ㅌ = 소리틀마련();
+    if(!ㅌ || !주소){ 맺음(false); return; }
+    let 끝났나 = false;
+    const 맺기 = ㄱ => { if(끝났나) return; 끝났나 = true; 맺음(ㄱ); };
     try{
-      const 소리 = new Audio(주소);
-      지금소리 = 소리;
-      소리.onerror = () => { 지금소리 = null; 맺음(false); };
-      소리.play().then(() => 맺음(true)).catch(() => { 지금소리 = null; 맺음(false); });
-    }catch(e){ 맺음(false); }
+      ㅌ.onerror = () => { 지금소리 = null; 맺기(false); };
+      ㅌ.src = 주소;
+      지금소리 = ㅌ;
+      const ㅍ = ㅌ.play();
+      if(ㅍ && ㅍ.then) ㅍ.then(() => 맺기(true)).catch(() => { 지금소리 = null; 맺기(false); });
+      else 맺기(true);
+      /* 아무 신호도 안 오면 학생을 기다리게 두지 말고 다음 길(기계 음성)로 보낸다 */
+      setTimeout(() => 맺기(false), 4000);
+    }catch(e){ 지금소리 = null; 맺기(false); }
   });
 }
 
@@ -708,6 +790,11 @@ let 듣는중 = false;
 듣기단추.onclick = async () => {
   const 글 = getTarget(); if(!글) return;
   if(듣는중) return;
+  듣는중 = true;
+  try{ await 듣기진행(글); } finally { 듣는중 = false; }
+};
+
+async function 듣기진행(글){
 
   // 앞서 틀던 것은 멈춥니다
   try{ window.speechSynthesis.cancel(); }catch(e){}
@@ -731,7 +818,7 @@ let 듣는중 = false;
      다음에 그 문장을 누르면 받아 둔 좋은 소리가 바로 납니다. */
   기계음성으로(글);
   미리받기(글);
-};
+}
 
 /* ── 소리 미리 받아 두기 ───────────────────────────────────
    누르기 전에 미리 받아 두면 누르는 순간 바로 소리가 납니다.
